@@ -10477,12 +10477,12 @@ def logout():
     flash('Anda telah logout!', 'success')
     return redirect(url_for('index'))
 
-
 @app.route("/")
 def home():
-    return "Geboy Mujair — Flask API is running 🎉"
+    return redirect("/login")
 
 if __name__ == '_main_':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
