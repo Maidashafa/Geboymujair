@@ -917,7 +917,7 @@ def get_user_by_username(username):
     except Exception as e:
         print(f"Error get_user_by_username: {e}")
         return None
-
+        
 def create_user(email, username, password, role):
     """Buat user baru di database"""
     try:
@@ -929,11 +929,14 @@ def create_user(email, username, password, role):
             'role': role
         }
         response = supabase.table('users').insert(data).execute()
+        print(f"✅ Supabase create_user response: {response.data}")
         return response.data[0] if response.data else None
     except Exception as e:
-        print(f"Error create_user: {e}")
+        print(f"❌❌❌ [FATAL ERROR] Exception di create_user: {e}", file=sys.stderr) # TAMBAH LOGGING ERROR
+        import traceback
+        traceback.print_exc() # TAMBAH TRACEBACK
         return None
-    
+
 def create_pending_registration(email, role, token):
     """Buat pending registration di database"""
     try:
@@ -950,7 +953,6 @@ def create_pending_registration(email, role, token):
             'token': token,
             'expires_at': expires_at
         }
-        
         print(f"🔍 SAVING PENDING REG: email={email}, role={role}")  # Debug
         
         response = supabase.table('pending_registrations').insert(data).execute()
@@ -959,8 +961,11 @@ def create_pending_registration(email, role, token):
         
         return response.data[0] if response.data else None
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌❌❌ [FATAL ERROR] Exception di create_pending_registration: {e}", file=sys.stderr) # TAMBAH LOGGING ERROR
+        import traceback
+        traceback.print_exc() # TAMBAH TRACEBACK
         return None
+
 def get_pending_registration(email):
     """Ambil pending registration berdasarkan email"""
     try:
@@ -10484,5 +10489,6 @@ def home():
 if __name__ == '_main_':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
