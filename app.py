@@ -7642,31 +7642,48 @@ def save_cash_flow_report():
     return redirect(url_for('akuntan_cash_flow_statement', start_date=request.form.get('start_date'), end_date=request.form.get('end_date')))
 # ============== OWNER ROUTES - FIXED VERSION ==============
 
-def get_total_transaction_count(start_date, end_date):
-    """Menghitung total transaksi dari tabel kasir dan manual."""
+def get_total_transaction_count(start_date=None, end_date=None):
+    """
+    Menghitung total transaksi dari berbagai sumber:
+    1. Transaksi kasir (tabel transactions)
+    2. Transaksi manual akuntan (dari journal_entries dengan ref_code MT-)
+    """
     try:
-        # Asumsi Anda punya tabel 'transactions' untuk kasir
-        # dan 'manual_transactions' untuk manual. Sesuaikan nama tabelnya.
-        # Hitung dari tabel transaksi kasir
-        kasir_query = supabase.table('transactions').select('id', count='exact').gte('date', start_date).lte('date', end_date)
+        total_count = 0
+        
+        # 1. Hitung transaksi kasir
+        kasir_query = supabase.table('transactions').select('id', count='exact')
+        if start_date:
+            kasir_query = kasir_query.gte('date', start_date)
+        if end_date:
+            kasir_query = kasir_query.lte('date', end_date)
+        
         kasir_response = kasir_query.execute()
         kasir_count = kasir_response.count if kasir_response.count is not None else 0
-        # Hitung dari tabel transaksi manual (jika ada)
-        # Jika tidak ada, Anda bisa menghitung dari journal_entries yang dikelompokkan
-        # Contoh dari journal_entries:
-        manual_query = supabase.table('journal_entries').select('transaction_id').gte('date', start_date).lte('date', end_date)
+        total_count += kasir_count
+        
+        # 2. Hitung transaksi manual akuntan (dari journal_entries dengan ref_code MT-)
+        manual_query = supabase.table('journal_entries').select('ref_code').like('ref_code', 'MT-%')
+        if start_date:
+            manual_query = manual_query.gte('date', start_date)
+        if end_date:
+            manual_query = manual_query.lte('date', end_date)
+        
         manual_response = manual_query.execute()
-
-        manual_count = 0
+        
         if manual_response.data:
-            # Hitung jumlah transaction_id yang unik
-            unique_transactions = set(entry['transaction_id'] for entry in manual_response.data if entry.get('transaction_id'))
-            manual_count = len(unique_transactions)
-
-        return kasir_count + manual_count
-
+            # Hitung ref_code unik (karena setiap transaksi punya 2+ baris jurnal)
+            unique_manual = set(entry['ref_code'] for entry in manual_response.data if entry.get('ref_code'))
+            manual_count = len(unique_manual)
+            total_count += manual_count
+        
+        print(f"✅ Total transaksi: Kasir={kasir_count}, Manual={manual_count if manual_response.data else 0}, Total={total_count}")
+        return total_count
+        
     except Exception as e:
-        print(f"Error getting total transaction count: {e}")
+        print(f"❌ Error getting total transaction count: {e}")
+        import traceback
+        traceback.print_exc()
         return 0
 
 @app.route('/owner/analytics')
@@ -7696,26 +7713,25 @@ def owner_analytics():
         # ✅ AMBIL DATA DARI INCOME STATEMENT (SAMA DENGAN LAPORAN LABA RUGI)
         income_statement = financial_reports['income_statement']
         total_revenue_year = income_statement['revenue']
-        total_expenses_year = income_statement['expenses']  # ✅ INI YANG DIPERBAIKI
+        total_expenses_year = income_statement['expenses']
         net_income_year = income_statement['net_income']
 
-    # 4. Total Transaksi Setahun (dari tabel transaksi kasir & manual)
+    # ✅ HITUNG TOTAL TRANSAKSI TAHUN INI
     total_transactions_year = get_total_transaction_count(start_of_year, end_date)
     
-    # --- PERBAIKAN UNTUK GRAFIK ---
+    # --- GRAFIK PENJUALAN ---
     import json
-    # Selalu definisikan variabel chart sebelum blok HTML
     chart_labels_json = json.dumps([])
     chart_values_json = json.dumps([])
     
-    sales_chart_data = get_sales_data_for_chart(months_limit=12) # Ambil data 12 bulan
+    sales_chart_data = get_sales_data_for_chart(months_limit=12)
     if sales_chart_data:
         chart_labels = [datetime.strptime(d['month'], '%Y-%m').strftime('%b %Y') for d in sales_chart_data]
         chart_values = [d['sales'] for d in sales_chart_data]
         chart_labels_json = json.dumps(chart_labels)
         chart_values_json = json.dumps(chart_values)
     
-    # Ambil transaksi terbaru untuk tabel (misal 10 terakhir dalam setahun)
+    # Ambil transaksi terbaru
     transactions = get_transactions(start_date=start_of_year, end_date=end_date)
     
     transactions_html = ""
@@ -7734,7 +7750,7 @@ def owner_analytics():
         </tr>
         """
     
-    # --- BLOK HTML DENGAN VARIABEL YANG SUDAH DIPERBAIKI ---
+    # --- HTML LENGKAP ---
     html = f"""
     <!DOCTYPE html>
     <html lang="id">
@@ -7755,7 +7771,7 @@ def owner_analytics():
                     <div class="date-time" id="datetime"></div>
                 </div>
                 
-                <!-- ✅ INFO BOX: DATA DARI LAPORAN LABA RUGI -->
+                <!-- ✅ INFO BOX -->
                 <div class="content-section" style="background: #d1ecf1; border-left: 4px solid #17a2b8; margin-bottom: 20px;">
                     <h3 style="color: #0c5460; margin-bottom: 10px;">ℹ️ Informasi Analytics</h3>
                     <p style="color: #0c5460; line-height: 1.8; margin: 0;">
@@ -7764,7 +7780,7 @@ def owner_analytics():
                     </p>
                 </div>
                 
-                <!-- ✅ STATISTIK TAHUN INI DENGAN DATA DARI LAPORAN LABA RUGI -->
+                <!-- ✅ STATISTIK TAHUN INI -->
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon">💵</div>
@@ -7788,7 +7804,7 @@ def owner_analytics():
                         <div class="stat-icon">📋</div>
                         <div class="stat-value">{total_transactions_year}</div>
                         <div class="stat-label">Transaksi Tahun Ini</div>
-                        <small style="opacity: 0.8; font-size: 11px;">Semua transaksi</small>
+                        <small style="opacity: 0.8; font-size: 11px;">Kasir + Manual ({today.year})</small>
                     </div>
                 </div>
                 
@@ -7854,7 +7870,6 @@ def owner_analytics():
     </body>
     </html>
     """
-    
     return html
 
 @app.route('/owner/financial-reports')
@@ -10049,9 +10064,8 @@ def generate_owner_dashboard():
         total_expenses = income_statement['expenses']
         net_income = income_statement['net_income']
     
-    # Hitung total transaksi
-    transactions = get_transactions()
-    total_transactions = len(transactions)
+    # ✅ HITUNG TOTAL TRANSAKSI (SEMUA WAKTU)
+    total_transactions = get_total_transaction_count()
     
     html = f"""
     <!DOCTYPE html>
@@ -10101,7 +10115,7 @@ def generate_owner_dashboard():
                     </p>
                 </div>
                 
-                <!-- ✅ STATS CARDS DENGAN DATA DARI LAPORAN LABA RUGI -->
+                <!-- ✅ STATS CARDS DENGAN DATA DARI LAPORAN LABA RUGI + TOTAL TRANSAKSI -->
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon">💵</div>
@@ -10125,7 +10139,7 @@ def generate_owner_dashboard():
                         <div class="stat-icon">📋</div>
                         <div class="stat-value">{total_transactions}</div>
                         <div class="stat-label">Total Transaksi</div>
-                        <small style="opacity: 0.8; font-size: 11px;">Semua periode</small>
+                        <small style="opacity: 0.8; font-size: 11px;">Kasir + Manual (Semua waktu)</small>
                     </div>
                 </div>
                 
@@ -10160,6 +10174,7 @@ def generate_owner_dashboard():
                             <li><strong>Margin {'Laba' if net_income >= 0 else 'Rugi'}:</strong> 
                                 {f'{(net_income / total_revenue * 100):.2f}%' if total_revenue > 0 else 'N/A'}
                             </li>
+                            <li><strong>Total Transaksi (Semua Waktu):</strong> {total_transactions} transaksi</li>
                         </ul>
                     </div>
                 </div>
@@ -10189,6 +10204,7 @@ def generate_owner_dashboard():
     </html>
     """
     return html
+
 # ============== ROUTES - AUTH ==============
 
 @app.route('/register', methods=['GET', 'POST'])
@@ -10499,6 +10515,7 @@ def home():
 if __name__ == '_main_':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
