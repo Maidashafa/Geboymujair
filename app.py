@@ -14,7 +14,7 @@ import sys
 import io
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail as SendGridMail  # Alias untuk hindari konflik
-
+import uuid
 
 
 if sys.stdout.encoding != 'utf-8':
@@ -922,19 +922,20 @@ def create_user(email, username, password, role):
     """Buat user baru di database"""
     try:
         password_hash = generate_password_hash(password)
+
         data = {
+            'id': str(uuid.uuid4()),          # 👈 WAJIB untuk kolom UUID
             'email': email,
             'username': username,
             'password_hash': password_hash,
             'role': role
         }
+
         response = supabase.table('users').insert(data).execute()
-        print(f"✅ Supabase create_user response: {response.data}")
         return response.data[0] if response.data else None
+
     except Exception as e:
-        print(f"❌❌❌ [FATAL ERROR] Exception di create_user: {e}", file=sys.stderr) # TAMBAH LOGGING ERROR
-        import traceback
-        traceback.print_exc() # TAMBAH TRACEBACK
+        print(f"Error create_user: {e}")
         return None
 
 def create_pending_registration(email, role, token):
@@ -10489,6 +10490,7 @@ def home():
 if __name__ == '_main_':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
