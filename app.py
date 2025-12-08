@@ -14,7 +14,6 @@ import sys
 import io
 from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail as SendGridMail  # Alias untuk hindari konflik
-import uuid
 
 
 if sys.stdout.encoding != 'utf-8':
@@ -924,7 +923,6 @@ def create_user(email, username, password, role):
         password_hash = generate_password_hash(password)
 
         data = {
-            'id': str(uuid.uuid4()),          # 👈 WAJIB untuk kolom UUID
             'email': email,
             'username': username,
             'password_hash': password_hash,
@@ -10490,6 +10488,7 @@ def home():
 if __name__ == '_main_':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
