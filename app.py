@@ -7671,7 +7671,7 @@ def get_total_transaction_count(start_date, end_date):
 
 @app.route('/owner/analytics')
 def owner_analytics():
-    """Halaman Analytics untuk Owner dengan data tahunan dan perbaikan error chart."""
+    """Halaman Analytics untuk Owner dengan data KONSISTEN dari Laporan Laba Rugi."""
     if 'username' not in session or session.get('role') != 'owner':
         return redirect(url_for('login'))
     
@@ -7680,28 +7680,26 @@ def owner_analytics():
     # --- PERIODE TAHUNAN ---
     today = datetime.now()
     start_of_year = today.replace(day=1, month=1).strftime('%Y-%m-%d')
-    end_date = today.strftime('%Y-%m-%d') # Bisa juga pakai end_of_year jika mau sampai akhir tahun
+    end_date = today.strftime('%Y-%m-%d')
 
-    # --- PENGAMBILAN DATA TAHUNAN ---
-    # 1. Total Pendapatan Setahun (dari Jurnal)
-    total_revenue_year = get_total_revenue_from_journal(start_of_year, end_date)
+    # ✅ AMBIL SEMUA DATA DARI LAPORAN KEUANGAN (SINGLE SOURCE OF TRUTH)
+    financial_reports = generate_financial_reports(end_date)
     
-    # 2. Total Pengeluaran Setahun (dari Arus Kas)
-    cash_flow_year = generate_cash_flow_statement(start_of_year, end_date)
-    total_cash_outflow_year = 0
-    if cash_flow_year and not cash_flow_year.get('error'):
-        total_cash_outflow_year = (cash_flow_year['operating']['total_outflow'] + 
-                                   cash_flow_year['investing']['total_outflow'] + 
-                                   cash_flow_year['financing']['total_outflow'])
-
-    # 3. Laba Bersih Setahun (dari Laba Rugi)
-    financial_reports_year = generate_financial_reports(end_date)
-    net_income_year = 0
-    if financial_reports_year and not financial_reports_year.get('error'):
-        net_income_year = financial_reports_year['income_statement']['net_income']
+    # Cek jika ada error
+    if financial_reports.get('error'):
+        flash(f'Error saat membuat dashboard: {financial_reports["error"]}', 'error')
+        # Fallback ke nilai 0
+        total_revenue_year = 0
+        total_expenses_year = 0
+        net_income_year = 0
+    else:
+        # ✅ AMBIL DATA DARI INCOME STATEMENT (SAMA DENGAN LAPORAN LABA RUGI)
+        income_statement = financial_reports['income_statement']
+        total_revenue_year = income_statement['revenue']
+        total_expenses_year = income_statement['expenses']  # ✅ INI YANG DIPERBAIKI
+        net_income_year = income_statement['net_income']
 
     # 4. Total Transaksi Setahun (dari tabel transaksi kasir & manual)
-    # Pastikan Anda sudah membuat fungsi get_total_transaction_count()
     total_transactions_year = get_total_transaction_count(start_of_year, end_date)
     
     # --- PERBAIKAN UNTUK GRAFIK ---
@@ -7757,27 +7755,40 @@ def owner_analytics():
                     <div class="date-time" id="datetime"></div>
                 </div>
                 
-                <!-- Statistik Tahun Ini -->
+                <!-- ✅ INFO BOX: DATA DARI LAPORAN LABA RUGI -->
+                <div class="content-section" style="background: #d1ecf1; border-left: 4px solid #17a2b8; margin-bottom: 20px;">
+                    <h3 style="color: #0c5460; margin-bottom: 10px;">ℹ️ Informasi Analytics</h3>
+                    <p style="color: #0c5460; line-height: 1.8; margin: 0;">
+                        Data pendapatan, beban, dan laba bersih di bawah ini <strong>sama persis</strong> dengan yang ada di <strong>Laporan Laba Rugi</strong>.<br>
+                        Periode: <strong>Tahun {today.year} (s/d {end_date})</strong>
+                    </p>
+                </div>
+                
+                <!-- ✅ STATISTIK TAHUN INI DENGAN DATA DARI LAPORAN LABA RUGI -->
                 <div class="stats-grid">
                     <div class="stat-card">
                         <div class="stat-icon">💵</div>
                         <div class="stat-value">{format_rupiah(total_revenue_year)}</div>
                         <div class="stat-label">Pendapatan Tahun Ini</div>
+                        <small style="opacity: 0.8; font-size: 11px;">Dari Laporan Laba Rugi</small>
                     </div>
                     <div class="stat-card" style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);">
                         <div class="stat-icon">💸</div>
-                        <div class="stat-value">{format_rupiah(total_cash_outflow_year)}</div>
-                        <div class="stat-label">Pengeluaran Kas Tahun Ini</div>
+                        <div class="stat-value">{format_rupiah(total_expenses_year)}</div>
+                        <div class="stat-label">Total Beban Tahun Ini</div>
+                        <small style="opacity: 0.8; font-size: 11px;">Dari Laporan Laba Rugi</small>
                     </div>
                     <div class="stat-card" style="background: linear-gradient(135deg, #28a745 0%, #218838 100%);">
                         <div class="stat-icon">📊</div>
                         <div class="stat-value">{format_rupiah(net_income_year)}</div>
                         <div class="stat-label">Laba Bersih Tahun Ini</div>
+                        <small style="opacity: 0.8; font-size: 11px;">Dari Laporan Laba Rugi</small>
                     </div>
                     <div class="stat-card" style="background: linear-gradient(135deg, #ffc107 0%, #e0a800 100%);">
-                        <div class="stat-icon">📝</div>
+                        <div class="stat-icon">📋</div>
                         <div class="stat-value">{total_transactions_year}</div>
                         <div class="stat-label">Transaksi Tahun Ini</div>
+                        <small style="opacity: 0.8; font-size: 11px;">Semua transaksi</small>
                     </div>
                 </div>
                 
@@ -10488,6 +10499,7 @@ def home():
 if __name__ == '_main_':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
 
 
